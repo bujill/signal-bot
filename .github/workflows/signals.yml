@@ -1,0 +1,53 @@
+name: trading-signals
+
+on:
+  schedule:
+    - cron: "0 11 * * 1-5"   # 18:00 เวลาไทย จ.–ศ. → หุ้นไทย (หลังตลาดปิด 16:30)
+    - cron: "15 0 * * *"     # 07:15 เวลาไทย ทุกวัน → คริปโต (แท่งรายวันปิด 07:00)
+  workflow_dispatch:          # กดรันเองได้จากแท็บ Actions
+    inputs:
+      market:
+        description: "ตลาด"
+        type: choice
+        options: [all, set, crypto]
+        default: all
+      mode:
+        description: "signals = ดูสัญญาณ, backtest = ทดสอบย้อนหลัง"
+        type: choice
+        options: [signals, backtest]
+        default: signals
+      days:
+        description: "ดูสัญญาณย้อนหลังกี่แท่ง (ใช้ตอนทดสอบ)"
+        default: "10"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run bot
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          IN_MARKET: ${{ inputs.market }}
+          IN_MODE: ${{ inputs.mode }}
+          IN_DAYS: ${{ inputs.days }}
+        run: |
+          if [ "$EVENT" = "schedule" ]; then
+            if [ "$SCHEDULE" = "0 11 * * 1-5" ]; then
+              python signal_bot.py --market set
+            else
+              python signal_bot.py --market crypto
+            fi
+          elif [ "$IN_MODE" = "backtest" ]; then
+            python signal_bot.py --market "$IN_MARKET" --backtest
+          else
+            python signal_bot.py --market "$IN_MARKET" --days "$IN_DAYS" --ignore-date
+          fi
